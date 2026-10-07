@@ -4,9 +4,7 @@
 // Usage: npm run import-legacy -- "C:\path\to\FINAL NOMINATIONS LISTs.xlsx"
 
 import * as XLSX from "xlsx";
-import { PrismaClient } from "@prisma/client";
-
-const prisma = new PrismaClient();
+import { createNomination, findDuplicateNomination } from "../src/lib/db";
 
 const STATE_ALIASES: Record<string, string> = {
   "A & N ISLANDS": "Andaman & Nicobar Islands",
@@ -44,7 +42,7 @@ const STATE_ALIASES: Record<string, string> = {
 
 function normalizeState(raw: unknown): string {
   const s = String(raw ?? "").trim().toUpperCase();
-  return STATE_ALIASES[s] ?? String(raw ?? "").trim() ?? "Unknown";
+  return STATE_ALIASES[s] ?? (String(raw ?? "").trim() || "Unknown");
 }
 
 function toNumberOrNull(v: unknown): number | null {
@@ -60,7 +58,7 @@ function toStringOrEmpty(v: unknown): string {
 async function main() {
   const filePath = process.argv[2];
   if (!filePath) {
-    console.error("Usage: npm run import-legacy -- \"<path-to-xlsx>\"");
+    console.error('Usage: npm run import-legacy -- "<path-to-xlsx>"');
     process.exit(1);
   }
 
@@ -87,48 +85,41 @@ async function main() {
       continue;
     }
 
-    const existing = await prisma.nomination.findFirst({
-      where: { rollNo, schoolName, cycle: "legacy" },
-    });
-    if (existing) {
+    if (await findDuplicateNomination(schoolName, rollNo, "legacy")) {
       skipped++;
       continue;
     }
 
-    await prisma.nomination.create({
-      data: {
-        rollNo,
-        studentName,
-        className: toStringOrEmpty(row[2]) || "XI",
-        gender: toStringOrEmpty(row[3]).toUpperCase() || "UNKNOWN",
-        schoolName,
-        schoolDistrict: toStringOrEmpty(row[5]),
-        schoolVillage: toStringOrEmpty(row[6]),
-        schoolState: normalizeState(row[7]),
-        schoolPincode: toStringOrEmpty(row[8]),
-        marksXMath: toNumberOrNull(row[9]),
-        marksXScience: toNumberOrNull(row[10]),
-        marksXAggregate: toNumberOrNull(row[11]),
-        marksXIPercent: toNumberOrNull(row[12]),
-        coordinatorName: toStringOrEmpty(row[13]),
-        coordinatorPhone: toStringOrEmpty(row[14]),
-        coordinatorEmail: toStringOrEmpty(row[15]),
-        studentEmail: toStringOrEmpty(row[16]) || null,
-        achievements: toStringOrEmpty(row[17]) || null,
-        prizes: toStringOrEmpty(row[18]) || null,
-        aspiration: toStringOrEmpty(row[19]) || null,
-        cycle: "legacy",
-      },
+    await createNomination({
+      rollNo,
+      studentName,
+      className: toStringOrEmpty(row[2]) || "XI",
+      gender: toStringOrEmpty(row[3]).toUpperCase() || "UNKNOWN",
+      schoolName,
+      schoolDistrict: toStringOrEmpty(row[5]),
+      schoolVillage: toStringOrEmpty(row[6]),
+      schoolState: normalizeState(row[7]),
+      schoolPincode: toStringOrEmpty(row[8]),
+      marksXMath: toNumberOrNull(row[9]),
+      marksXScience: toNumberOrNull(row[10]),
+      marksXAggregate: toNumberOrNull(row[11]),
+      marksXIPercent: toNumberOrNull(row[12]),
+      coordinatorName: toStringOrEmpty(row[13]),
+      coordinatorPhone: toStringOrEmpty(row[14]),
+      coordinatorEmail: toStringOrEmpty(row[15]),
+      studentEmail: toStringOrEmpty(row[16]) || null,
+      achievements: toStringOrEmpty(row[17]) || null,
+      prizes: toStringOrEmpty(row[18]) || null,
+      aspiration: toStringOrEmpty(row[19]) || null,
+      cycle: "legacy",
     });
     imported++;
   }
 
   console.log(`Imported ${imported} nomination(s). Skipped ${skipped} (missing data or duplicate).`);
-  await prisma.$disconnect();
 }
 
-main().catch(async (err) => {
+main().catch((err) => {
   console.error(err);
-  await prisma.$disconnect();
   process.exit(1);
 });

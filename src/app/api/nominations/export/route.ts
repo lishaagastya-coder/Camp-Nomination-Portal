@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import * as XLSX from "xlsx";
-import { prisma } from "@/lib/prisma";
+import { getAllNominations } from "@/lib/db";
 import { COOKIE_NAME, verifySessionToken } from "@/lib/auth";
 
 export async function GET(req: NextRequest) {
@@ -9,7 +9,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
   }
 
-  const nominations = await prisma.nomination.findMany({ orderBy: { createdAt: "desc" } });
+  const nominations = await getAllNominations();
 
   const rows = nominations.map((n) => ({
     "School Roll No.": n.rollNo,
@@ -32,15 +32,16 @@ export async function GET(req: NextRequest) {
     "Other Achievements": n.achievements ?? "",
     "Prizes Won": n.prizes ?? "",
     "Student's Aspiration": n.aspiration ?? "",
-    "Submitted At": n.createdAt.toISOString(),
+    "Submitted At": n.createdAt,
   }));
 
   const worksheet = XLSX.utils.json_to_sheet(rows);
   const workbook = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(workbook, worksheet, "Nominations");
   const buffer = XLSX.write(workbook, { type: "buffer", bookType: "xlsx" }) as Buffer;
+  const blob = new Blob([new Uint8Array(buffer)]);
 
-  return new NextResponse(buffer, {
+  return new NextResponse(blob, {
     status: 200,
     headers: {
       "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",

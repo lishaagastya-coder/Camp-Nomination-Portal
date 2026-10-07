@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
+import { createNomination, findDuplicateNomination, listNominations } from "@/lib/db";
 import { validateNomination, type NominationInput } from "@/lib/validation";
 import { NOMINATION_CYCLE } from "@/lib/constants";
 import { COOKIE_NAME, verifySessionToken } from "@/lib/auth";
@@ -38,14 +38,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Validation failed.", fieldErrors: errors }, { status: 400 });
   }
 
-  const existing = await prisma.nomination.findFirst({
-    where: {
-      schoolName: { equals: data.schoolName },
-      rollNo: { equals: data.rollNo },
-      cycle: NOMINATION_CYCLE,
-    },
-  });
-
+  const existing = await findDuplicateNomination(data.schoolName, data.rollNo, NOMINATION_CYCLE);
   if (existing) {
     return NextResponse.json(
       {
@@ -57,9 +50,7 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const nomination = await prisma.nomination.create({
-    data: { ...data, cycle: NOMINATION_CYCLE },
-  });
+  const nomination = await createNomination({ ...data, cycle: NOMINATION_CYCLE });
 
   return NextResponse.json({ id: nomination.id }, { status: 201 });
 }
@@ -74,22 +65,7 @@ export async function GET(req: NextRequest) {
   const state = searchParams.get("state") ?? undefined;
   const q = searchParams.get("q") ?? undefined;
 
-  const nominations = await prisma.nomination.findMany({
-    where: {
-      ...(state ? { schoolState: state } : {}),
-      ...(q
-        ? {
-            OR: [
-              { studentName: { contains: q } },
-              { schoolName: { contains: q } },
-              { rollNo: { contains: q } },
-              { schoolDistrict: { contains: q } },
-            ],
-          }
-        : {}),
-    },
-    orderBy: { createdAt: "desc" },
-  });
+  const nominations = await listNominations({ state, q });
 
   return NextResponse.json({ nominations });
 }
